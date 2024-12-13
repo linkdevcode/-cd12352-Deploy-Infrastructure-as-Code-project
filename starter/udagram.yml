@@ -1,14 +1,36 @@
-Description: CD12352 - Infrastructure as Code Project - Udagram
+Description: Linkdevcode's Udacity project - Infrastructure as Code Project - Udagram
 
 Parameters:
-  # Add your parameters here
+  EnvironmentName:
+    Type: String
+    Description: An environment name that will be prefixed to resource names
+  ImageId:
+    Type: String
+    Description: Please enter the ImageId use for LaunchTemplate
+  InstanceType:
+    Type: String
+    Description: Please enter the Instance Type use for LaunchTemplate
+  BDMVolumeSize:
+    Type: String
+    Description: Please enter the Volume Size of Block Device Mappings use for LaunchTemplate
+  ASGMinSize:
+    Type: String
+    Description: Please enter the min size use for ASG
+  ASGMaxSize:
+    Type: String
+    Description: Please enter the max size use for ASG
+  ASGDesiredCapacity:
+    Type: String
+    Description: Please enter the desire capacity use for ASG
+  S3BucketName:
+    Type: String
+    Description: Please enter the name of bucket use for S3
 
 Resources:
-  # Add your resources here
-  # We include a portion of the LaunchTemplate resource so you can use the UserData.
+
   WebAppLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
-    Properties: 
+    Properties:
       LaunchTemplateData:
         UserData:
           Fn::Base64: |
@@ -16,3 +38,151 @@ Resources:
             apt-get update -y
             sudo apt-get install nginx -y
             service nginx start
+            apt-get install -y amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+            systemctl enable amazon-ssm-agent
+            apt-get install -y awscli
+            aws s3 cp s3://iac-s3-webserver-bucket/index.html /tmp/index.html 
+            sudo mv /tmp/index.html /var/www/html/index.html
+            sudo service nginx restart
+        ImageId: !Ref ImageId
+        SecurityGroupIds:
+          - !Ref WebServerSecGroup
+        InstanceType: !Ref InstanceType
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: !Ref BDMVolumeSize
+        IamInstanceProfile:
+          Name: !Ref WebAppInstanceProfile
+
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http access to our load balancer
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  WebServerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http access to our hosts from the LB Security Group
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref LBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+
+  WebAppInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvironmentName}-web-servers"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::iac-s3-webserver-bucket/*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  WebAppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref WebAppInstanceRole
+
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PRIVATE-SUBNET"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebAppLaunchTemplate
+        Version: !GetAtt WebAppLaunchTemplate.LatestVersionNumber
+      MinSize: !Ref ASGMinSize
+      DesiredCapacity: !Ref ASGDesiredCapacity
+      MaxSize: !Ref ASGMaxSize
+      TargetGroupARNs:
+        - Ref: WebAppTargetGroup
+
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUBLIC-SUBNET-1"
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUBLIC-SUBNET-2"
+      SecurityGroups:
+        - Ref: LBSecurityGroup
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: "80"
+      Protocol: HTTP
+
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref "WebAppTargetGroup"
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref "Listener"
+      Priority: 1
+
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+
+Outputs:
+  LoadBalancerURL:
+    Description: "The public URL of the Application (i.e. the LoadBalancer's DNS)"
+    Value: !Sub "http://${WebAppLB.DNSName}"
+    Export:
+      Name: !Sub "${EnvironmentName}-LoadBalancerURL"

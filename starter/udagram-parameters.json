@@ -1,6 +1,35 @@
 [
 	{
-		"ParameterKey": "Add you parameters here",
-		"ParameterValue": "Add you parameters here"
+	  "ParameterKey": "ImageId",
+	  "ParameterValue": "ami-0a0e5d9c7acc336f1"
+	},
+	{
+	  "ParameterKey": "InstanceType",
+	  "ParameterValue": "t2.micro"
+	},
+	{
+		"ParameterKey": "BDMVolumeSize",
+		"ParameterValue": "10"
+	  },
+	{
+	  "ParameterKey": "ASGMinSize",
+	  "ParameterValue": "1"
+	},
+	{
+	  "ParameterKey": "ASGMaxSize",
+	  "ParameterValue": "4"
+	},
+	{
+	  "ParameterKey": "ASGDesiredCapacity",
+	  "ParameterValue": "1"
+	},
+	{
+	  "ParameterKey": "S3BucketName",
+	  "ParameterValue": "linkdevcode-iac-s3-webserver-bucket"
+	},
+	{
+	  "ParameterKey": "EnvironmentName",
+	  "ParameterValue": "UdacityCloudDevOpsProject2"
 	}
-]
+  ]
+  
