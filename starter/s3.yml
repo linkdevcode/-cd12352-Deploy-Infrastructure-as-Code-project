@@ -1,0 +1,28 @@
+Description: Linkdevcode's Udacity project - Infrastructure as Code Project - S3 Bucket
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Please enter the name of bucket use for S3 Bucket
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 30
+            Status: "Enabled"
+            NoncurrentVersionExpirationInDays: 10
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        IgnorePublicAcls: false
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false

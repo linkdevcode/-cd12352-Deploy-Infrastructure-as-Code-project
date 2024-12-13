@@ -1,0 +1,7 @@
+[
+	{
+	  "ParameterKey": "S3BucketName",
+	  "ParameterValue": "linkdevcode-iac-s3-webserver-bucket"
+	}
+  ]
+  
